@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3>Domains</h3>
+
+<form action="" method="post">
+  https://<input type="text" name="domainname" placeholder="Domainname" required>.moit.ml
+  <input type="submit" value="Neue Domain anlegen">
+</form>
+
+<hr>
+
+{% if domains %}
+  <table>
+    <tr>
+      <th>Domainname</th>
+      <th>Erstellt am</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+    {% for domain in domains %}
+      <tr>
+        <td><a href="https://{{ domain["name"] }}.moit.ml" target="_blank">{{ domain["name"] }}.moit.ml</a></td>
+        <td>{{ domain["registration_date"] }}</td>
+
+        {% if domain["activated"] %}
+          <td><i class="material-icons" title="Deine Domain wurde erfolgreich von {{ domain["activated"] }} eingerichtet!">done</i></td>
+        {% else %}
+          <td><i class="material-icons" title="Deine Domain wurde noch nicht eingerichtet! Dies kann noch einige Stunden bis Tage dauern! Baue solange noch eine weitere Webseite ;)">clear</i></td>
+        {% endif %}
+
+        <td><a href="#"><i class="material-icons">build</i></a></td>
+    {% endfor %}
+  </table>
+
+{% else %}
+  <p>Du hast noch keine Domains</p>
+{% endif %}
+
+{% endblock %}

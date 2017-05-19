@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{ title }} - Moit Dashboard</title>
+    <!-- <link href="style.css" type="text/css" rel="stylesheet"> -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet" type="text/css">
+    <link href="{{ url_for('static', filename='images/favicon.ico') }}" rel="shortcut icon">
+  </head>
+  <body>
+    <header>
+      <div id="heading">
+        <h1>Moit Dashboard</h1>
+      </div>
+
+      <div id="subheading">
+        <h2>{{ title }}</h2>
+      </div>
+
+      {% if "logged_in" in session %}
+      <div id="navigation">
+        <h2>
+          {% if "admin" in session %}
+            <a href="{{ url_for("admin") }}">Admin</a> - 
+            <a href="{{ url_for("dashboard") }}">Dasboard</a> -
+          {% endif %}
+
+          <a href="{{ url_for("logout") }}">Logout</a>
+        </h2>
+      </div>
+      {% endif %}
+    </header>
+
+    <main>
+      <!-- errors -->
+      {% if error %}
+        <p class="error"><strong>Error: </strong>{{ error }}</p>
+      {% endif %}
+
+      <!-- messages -->
+      {% for message in get_flashed_messages() %}
+        <p class="flash">{{ message }}</p>
+      {% endfor %}
+
+      <!-- child template -->
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+      <p>Copyright &copy;2017 <a href="https://it-moerike.github.io" target="_blank"></a></p>
+    </footer>
+  </body>
+</html>

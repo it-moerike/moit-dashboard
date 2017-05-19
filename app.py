@@ -1,0 +1,216 @@
+from flask import Flask
+from flask import render_template, flash, request, redirect, url_for, session
+
+from passlib.hash import pbkdf2_sha512
+from functools import wraps
+import datetime
+
+from bson.objectid import ObjectId
+
+from dbconnect import connection
+import config
+
+app = Flask(__name__)
+app.secret_key = config.secret_key
+
+def login_required(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        if "logged_in" in session:
+            return f(*args, **kwargs)
+        else:
+            flash("Du musst dich anmelden!")
+            return redirect(url_for("index"))
+    return wrap
+
+
+def admin_required(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        if "admin" in session:
+            return f(*args, **kwargs)
+        else:
+            flash("Du bist kein admin!")
+            return redirect(url_for("index"))
+    return wrap
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    error = None
+
+    # If user is logged in, redirect him to dashboard
+    if "logged_in" in session:
+            return redirect(url_for("dashboard"))
+
+    try:
+        client, db = connection()
+
+        if request.method == "POST":
+
+            # Get form values
+            attempted_username = request.form["username"].lower()
+            attempted_password = request.form["password"]
+
+            data = db.users.find_one({"username": attempted_username})
+
+            if data:
+                # Get data from db
+                database_password = data["password"]
+                uid = str(data["_id"])
+                username = data["username"]
+                rank = data["rank"]
+
+                # If no password has been set
+                if database_password == False:
+                    password_hashed = pbkdf2_sha512.hash(attempted_password)
+                    db.users.update({"_id": ObjectId(uid)},
+                                    {"$set": {
+                                        "password": password_hashed
+                                    }})
+                    flash("Dein Passwort wurde erfolgreich gesetzt! Melde dich bitte erneut an!")
+                    return redirect(url_for("index"))
+
+                # Check hash
+                if pbkdf2_sha512.verify(attempted_password, database_password):
+                    flash("Hallo, " + username + " Du hast dich erfolgreich angemeldet!")
+                    session["logged_in"] = True
+                    session["username"] = username
+                    session["uid"] = uid
+
+                    # Check admin
+                    if rank == "admin":
+                        session["admin"] = True
+                        flash("Du bist ein Admin!")
+                        return redirect(url_for("admin"))
+
+                    return redirect(url_for("dashboard"))
+
+                # Wrong username or password
+                else:
+                    error = "Falscher Benutzername oder falsches Passwort!"
+
+    except Exception as e:
+        error = e
+
+    return render_template("index.html", error=error, title="Login")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    # Delete all variables from user session
+    session.clear()
+    flash("You logged out successfully!")
+    return redirect(url_for("index"))
+
+
+###
+# DASHBOARD
+###
+
+@app.route("/dashboard", methods=["GET", "POST"])
+@login_required
+def dashboard():
+    error = None
+    client, db = connection()
+    domains = [domain for domain in db.domains.find({"uid": str(session["uid"])})]
+
+    if request.method == "POST":
+        # Get form value
+        domainname = request.form["domainname"]
+
+        # Check for special characters
+        characters = [".", ",", "-", "/", ":", ";", "_", "!", "=", "?", "*", "#", "+", "~", "ä", "ö", "ü"]
+        for character in characters:
+            if character in domainname:
+                error = "Verwende keine Sonderzeichen in deinem Domainname!"
+                return render_template("dashboard.html", title="Dashboard", error=error, domains=domains)
+            else:
+                pass
+
+        # Check whether domainname is already taken
+        check_domain = db.domains.find_one({"name": domainname})
+        print(check_domain)
+        if check_domain:
+            error = "Diese Domain gibst es schon! Wähle eine andere."
+            return render_template("dashboard.html", title="Dashboard", error=error, domains=domains)
+
+        # Insert it in the database
+        domain = {
+            "name": domainname,
+            "registration_date": datetime.datetime.now().strftime("%Y-%m-%d"),
+            "uid": str(session["uid"]),
+            "activated": False
+        }
+        db.domains.insert_one(domain)
+
+        # Get the domains again, so the new domain is in the list
+        domains = [domain for domain in db.domains.find({"uid": str(session["uid"])})]
+
+        flash("Deine Domain " + domainname + ".moit.ml wird erstellt. Nun musst Du einige Zeit warten, bis deine Domain online ist!")
+
+
+    return render_template("dashboard.html", title="Dashboard", error=error, domains=domains)
+
+
+###
+# ADMIN
+###
+
+@app.route("/admin", methods=["GET", "POST"])
+@admin_required
+def admin():
+    error = None
+    client, db = connection()
+
+    # Get all infos from db
+    not_activated_domains = [domain for domain in db.domains.find({"activated": False})]
+    domains = [domain for domain in db.domains.find()]
+    users = [user for user in db.users.find()]
+
+    # Add username to list
+    for domain in not_activated_domains:
+        uid = domain["uid"]
+        username = db.users.find_one({"_id": ObjectId(uid)})
+        domain["username"] = username["username"]
+    for domain in domains:
+        uid = domain["uid"]
+        username = db.users.find_one({"_id": ObjectId(uid)})
+        domain["username"] = username["username"]
+
+    if request.method == "POST":
+        username = request.form["username"].lower()
+        user = {
+            "username": username,
+            "password": False,
+            "rank": "user",
+            "registration_date": datetime.datetime.now().strftime("%Y-%m-%d")
+        }
+
+        db.users.insert_one(user)
+
+        flash("User " + username + " wurde hinzugefügt!")
+
+        # Redirect to this page, so new user will be in list
+        return redirect(url_for("admin"))
+
+    return render_template("admin.html", title="Admin", error=error, users=users,
+                           not_activated_domains=not_activated_domains, domains=domains)
+
+
+@admin_required
+@app.route("/admin/done/<string:domainname>")
+def adminDone(domainname):
+    client, db = connection()
+    db.domains.update({"name": domainname},
+                      {"$set": {
+                          "activated": session["username"]
+                      }})
+
+    flash("Domain " + domainname + ".moit.ml wurde als aktiviert festgelegt.")
+    return redirect(url_for("admin"))
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
