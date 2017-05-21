@@ -4,6 +4,7 @@ from flask import render_template, flash, request, redirect, url_for, session
 from passlib.hash import pbkdf2_sha512
 from functools import wraps
 import datetime
+import paramiko
 
 from bson.objectid import ObjectId
 
@@ -116,6 +117,7 @@ def dashboard():
     client, db = connection()
     domains = [domain for domain in db.domains.find({"uid": str(session["uid"])})]
 
+    # User wants to create a new domain
     if request.method == "POST":
         # Get form value
         domainname = request.form["domainname"]
@@ -154,9 +156,62 @@ def dashboard():
     return render_template("dashboard.html", title="Dashboard", error=error, domains=domains)
 
 
+@app.route("/dashboard/folder/<string:domainname>")
+@app.route("/dashboard/folder/<string:domainname>/<path:path>")
+@login_required
+def dashboardFolder(domainname, path=None):
+    client, db = connection()
+
+    domain = db.domains.find_one({"name": domainname, "uid": str(session["uid"])})
+    # TODO: Check whether it's activated
+    
+    # If domain doesn't exist or user has no permission
+    if not domain:
+        flash("Du hast keine Berechtigung, diese Domain zu bearbeiten!")
+        return redirect(url_for("dashboard"))
+
+    # Connect to FTP-Server
+    transport = paramiko.Transport((config.ftp_host, config.ftp_port))
+    transport.connect(username=config.ftp_username, password=config.ftp_password)
+
+    ok = False
+    while not ok:
+        try:
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            sftp.chdir("public_html/" + domainname)
+            foldercontent = sftp.listdir_attr()
+            pwd = sftp.getcwd()
+            ok = True
+        except Exception as e:
+            print(e)
+
+    # Create filelist
+    files = list()
+    for i in foldercontent:
+        i = str(i)
+
+        # Get type (directory or file)
+        if i[0] == "d":
+            filetype = "d"
+        else:
+            filetype = "f"
+
+        splittedFile = i.split(" ")
+
+        # Don't show hidden files
+        if splittedFile[-1][0] != ".":
+            # Append dict ("filename": "file.py", "type": "f") to list
+            files.append({"filename": splittedFile[-1], "filetype": filetype})
+
+    # TODO: Order files
+
+    return render_template("dashboard-folder.html", title="Config " + domainname, domainname=domainname, files=files, pwd=pwd)
+
+
 ###
 # ADMIN
 ###
+
 
 @app.route("/admin", methods=["GET", "POST"])
 @admin_required
@@ -166,7 +221,7 @@ def admin():
 
     # Get all infos from db
     not_activated_domains = [domain for domain in db.domains.find({"activated": False})]
-    domains = [domain for domain in db.domains.find()]
+    domains = [domain for domain in db.domains.find({"activated": {"$ne": False}})]
     users = [user for user in db.users.find()]
 
     # Add username to list
@@ -179,6 +234,7 @@ def admin():
         username = db.users.find_one({"_id": ObjectId(uid)})
         domain["username"] = username["username"]
 
+    # Create new user
     if request.method == "POST":
         username = request.form["username"].lower()
         user = {
@@ -187,7 +243,6 @@ def admin():
             "rank": "user",
             "registration_date": datetime.datetime.now().strftime("%Y-%m-%d")
         }
-
         db.users.insert_one(user)
 
         flash("User " + username + " wurde hinzugefügt!")
@@ -203,6 +258,7 @@ def admin():
 @app.route("/admin/done/<string:domainname>")
 def adminDone(domainname):
     client, db = connection()
+    # Set a domainname as created
     db.domains.update({"name": domainname},
                       {"$set": {
                           "activated": session["username"]

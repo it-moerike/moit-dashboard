@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3>Config: {{ domainname }}.moit.ml</h3>
+
+<p>Verzeichnis: <em>{{ pwd }}</em></p>
+<table>
+  {% for i in files %}
+    <tr>
+      {% if i["filetype"] == "f" %}
+        <td>{{ i["filename"] }}</td>
+      {% elif i["filetype"] == "d" %}
+        <td style="color: rgb(29, 104, 207);">{{ i["filename"] }}</td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+</table>
+
+{% endblock %}

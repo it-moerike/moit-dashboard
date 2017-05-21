@@ -29,7 +29,7 @@
           <td><i class="material-icons" title="Deine Domain wurde noch nicht eingerichtet! Dies kann noch einige Stunden bis Tage dauern! Baue solange noch eine weitere Webseite ;)">clear</i></td>
         {% endif %}
 
-        <td><a href="#"><i class="material-icons">build</i></a></td>
+        <td><a href="{{ url_for("dashboardFolder", domainname=domain["name"]) }}"><i class="material-icons">folder</i></a></td>
     {% endfor %}
   </table>
 

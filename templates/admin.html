@@ -9,7 +9,6 @@
       <th>Domainname</th>
       <th>Erstellt am</th>
       <th>Username</th>
-      <th>Status</th>
       <th></th>
     </tr>
     {% for domain in not_activated_domains %}
@@ -17,14 +16,7 @@
         <td><a href="https://{{ domain["name"] }}.moit.ml" target="_blank">{{ domain["name"] }}.moit.ml</a></td>
         <td>{{ domain["registration_date"] }}</td>
         <td>{{ domain["username"] }}</td>
-
-        {% if domain["activated"] %}
-          <td><i class="material-icons" title="Deine Domain wurde erfolgreich von {{ domain["activated"] }} eingerichtet!">done</i></td>
-        {% else %}
-          <td><i class="material-icons" title="Deine Domain wurde noch nicht eingerichtet! Dies kann noch einige Stunden bis Tage dauern! Baue solange noch eine weitere Webseite ;)">clear</i></td>
-        {% endif %}
-
-        <td><a href="{{ url_for("admin") }}/done/{{ domain["name"] }}"><i class="material-icons">check_box_outline_blank</i></a></td>
+        <td><a href="{{ url_for("admin") }}/done/{{ domain["name"] }}" title="activate"><i class="material-icons">check_box_outline_blank</i></a></td>
     {% endfor %}
   </table>
 
@@ -41,21 +33,14 @@
       <th>Domainname</th>
       <th>Erstellt am</th>
       <th>Username</th>
-      <th>Status</th>
       <th></th>
     </tr>
     {% for domain in domains %}
       <tr>
         <td><a href="https://{{ domain["name"] }}.moit.ml" target="_blank">{{ domain["name"] }}.moit.ml</a></td>
         <td>{{ domain["registration_date"] }}</td>
-        <td>{{ domain["username"] }}
-        {% if domain["activated"] %}
-          <td><i class="material-icons" title="Deine Domain wurde erfolgreich von {{ domain["activated"] }} eingerichtet!">done</i></td>
-        {% else %}
-          <td><i class="material-icons" title="Deine Domain wurde noch nicht eingerichtet! Dies kann noch einige Stunden bis Tage dauern! Baue solange noch eine weitere Webseite ;)">clear</i></td>
-        {% endif %}
-
-        <td><a href="#"><i class="material-icons">check_box</i></a></td>
+        <td>{{ domain["username"] }}</td>
+        <td><a href="#" title="already activated"><i class="material-icons">check_box</i></a></td>
     {% endfor %}
   </table>
 
