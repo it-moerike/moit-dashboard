@@ -1,10 +1,12 @@
 from flask import Flask
 from flask import render_template, flash, request, redirect, url_for, session
+from werkzeug.utils import secure_filename
 
 from passlib.hash import pbkdf2_sha512
 from functools import wraps
 import datetime
 import paramiko
+import os
 
 from bson.objectid import ObjectId
 
@@ -13,6 +15,18 @@ import config
 
 app = Flask(__name__)
 app.secret_key = config.secret_key
+
+# File upload configuration
+UPLOAD_FOLDER = "/app/uploads"
+ALLOWED_EXTENSIONS = set(["html", "css", "jpg", "png"])
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB
+uploadingFiles = dict()
+
+def allowed_file(filename):
+    return "." in filename and \
+        filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 def login_required(f):
     @wraps(f)
@@ -133,7 +147,7 @@ def dashboard():
 
         # Check whether domainname is already taken
         check_domain = db.domains.find_one({"name": domainname})
-        print(check_domain)
+
         if check_domain:
             error = "Diese Domain gibst es schon! Wähle eine andere."
             return render_template("dashboard.html", title="Dashboard", error=error, domains=domains)
@@ -156,15 +170,14 @@ def dashboard():
     return render_template("dashboard.html", title="Dashboard", error=error, domains=domains)
 
 
-@app.route("/dashboard/folder/<string:domainname>")
-@app.route("/dashboard/folder/<string:domainname>/<path:path>")
+@app.route("/dashboard/folder/<string:domainname>", methods=["GET", "POST"])
+@app.route("/dashboard/folder/<string:domainname>/<path:path>", methods=["GET", "POST"])
 @login_required
 def dashboardFolder(domainname, path=None):
     client, db = connection()
 
-    domain = db.domains.find_one({"name": domainname, "uid": str(session["uid"])})
-    # TODO: Check whether it's activated
-    
+    domain = db.domains.find_one({"name": domainname, "uid": str(session["uid"]), "activated": {"$ne": False}})
+
     # If domain doesn't exist or user has no permission
     if not domain:
         flash("Du hast keine Berechtigung, diese Domain zu bearbeiten!")
@@ -174,18 +187,58 @@ def dashboardFolder(domainname, path=None):
     transport = paramiko.Transport((config.ftp_host, config.ftp_port))
     transport.connect(username=config.ftp_username, password=config.ftp_password)
 
+    # Upload file
+    if request.method == "POST":
+
+        # Check if the post request has the file part
+        if "file" not in request.files:
+            flash("Du hast keine Datei ausgewählt!")
+            return redirect(request.url)
+        file = request.files["file"]
+        if file.filename == "":
+            flash("Du hast keine Datei ausgewählt!")
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config["UPLOAD_FOLDER"], str(session["uid"]) + "_" + filename))
+
+            # Upload file to FTP-Server
+            ok = False
+            while not ok:
+                try:
+                    sftp = paramiko.SFTPClient.from_transport(transport)
+                    path_on_server = "uploads/" + str(session["uid"]) + "_" + filename
+                    if path:
+                        sftp.put(path_on_server, "public_html/" + domainname + "/" + path + "/" + filename)
+                    else:
+                        sftp.put(path_on_server, "public_html/" + domainname + "/" + filename)
+
+                    # Remove file from server
+                    os.remove(path_on_server)
+                    ok = True
+                except Exception as e:
+                    print(e)
+
+            flash("Deine Datei " + filename + " wird hochgeladen")
+
+        else:
+            flash("Diese Datei darfst Du nicht hochladen!")
+
     ok = False
     while not ok:
         try:
             sftp = paramiko.SFTPClient.from_transport(transport)
-            sftp.chdir("public_html/" + domainname)
+            if path:
+                sftp.chdir("public_html/" + domainname + "/" + path)
+            else:
+                sftp.chdir("public_html/" + domainname)
             foldercontent = sftp.listdir_attr()
             pwd = sftp.getcwd()
+            sftp.close()
             ok = True
         except Exception as e:
             print(e)
 
-    # Create filelist
+    # Create list with files
     files = list()
     for i in foldercontent:
         i = str(i)
@@ -203,9 +256,15 @@ def dashboardFolder(domainname, path=None):
             # Append dict ("filename": "file.py", "type": "f") to list
             files.append({"filename": splittedFile[-1], "filetype": filetype})
 
+    # Remove folder cgi-bin
+    files = [file for file in files if file["filename"] != "cgi-bin"]
+
     # TODO: Order files
 
-    return render_template("dashboard-folder.html", title="Config " + domainname, domainname=domainname, files=files, pwd=pwd)
+    # Remove exact pwd (/home/moit/...)
+    cleaned_pwd = pwd[22:]
+
+    return render_template("dashboard-folder.html", title="Config " + domainname, domainname=domainname, files=files, pwd=cleaned_pwd, path=path)
 
 
 ###
@@ -269,4 +328,4 @@ def adminDone(domainname):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=config.debug)

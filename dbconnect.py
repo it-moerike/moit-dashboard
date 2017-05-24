@@ -4,7 +4,6 @@ from bson.objectid import ObjectId
 import config
 
 
-
 def connection():
     uri = "mongodb://" + config.mongodb_username + ":" + config.mongodb_password + "@" + config.mongodb_host + ":" + config.mongodb_port + "/" + config.mongodb_db
     client = MongoClient(uri)

@@ -3,17 +3,34 @@
 
 <h3>Config: {{ domainname }}.moit.ml</h3>
 
-<p>Verzeichnis: <em>{{ pwd }}</em></p>
+<p>Verzeichnis: <em><a href="{{ url_for("dashboardFolder", domainname=domainname) }}">{{ pwd }}</a></em></p>
+
+<form method="post" enctype="multipart/form-data">
+  <label><strong>Datei hochladen: </strong></label>
+  <input type="file" name="file">
+  <input type="submit" value="Upload">
+</form>
+
+<br><hr><br>
+
 <table>
-  {% for i in files %}
-    <tr>
-      {% if i["filetype"] == "f" %}
-        <td>{{ i["filename"] }}</td>
-      {% elif i["filetype"] == "d" %}
-        <td style="color: rgb(29, 104, 207);">{{ i["filename"] }}</td>
-      {% endif %}
-    </tr>
-  {% endfor %}
+  {% if files %}
+    {% for i in files %}
+      <tr>
+        {% if i["filetype"] == "f" %}
+          {% if path %}
+            <td><a href="http://{{ domainname }}.moit.ml/{{ path }}/{{ i["filename"] }}" target="_blank">{{ i["filename"] }}</a></td>
+          {% else %}
+            <td><a href="http://{{ domainname }}.moit.ml/{{ i["filename"] }}" target="_blank">{{ i["filename"] }}</a></td>
+          {% endif %}
+        {% elif i["filetype"] == "d" %}
+          <td ><a href="{{ url_for("dashboardFolder", domainname=domainname, path=i["filename"]) }}" style="color: rgb(29, 104, 207);">{{ i["filename"] }}</a></td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+  {% else %}
+    <p>In diesem Ordner gibt es keine Dateien</p>
+  {% endif %}
 </table>
 
 {% endblock %}
